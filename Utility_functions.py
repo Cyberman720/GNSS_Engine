@@ -9,18 +9,46 @@ import csv
 import os
 
 
-def wave_creator(time, cycles, resolution, frequency):
+def ascii_binary_translator(translate_me):
+    """
+    this is a helper function that takes in either binary or Text and outputs the inverse.
+    """
+    if translate_me.isnumeric():
+        translated = ''.join([chr(int(binary, 2)) for binary in translate_me.split(' ')])
+    else:
+        binary = ' '.join([f'{ord(char):08b}' for char in translate_me])
+        translated = ("{}".format(binary)).replace(" ", "")
+    return translated
+
+
+def single_bit_generator(frequency, time, amplitude, theta, mode):
+    if mode == "ASK":
+        amplitude += 1
+        encoded_bit = amplitude * np.sin(2 * np.pi * frequency * time + theta)
+    return encoded_bit
+
+
+def wave_creator(end_time, sample_rate, frequency, bits_to_encode, mode):
     """
     a utility function that takes our binary and puts it into a sine wave.
-    cycles, number of complete waves per frequecncy.
-    frequency, number of peaks per resolution.
-    resolution, total number of samples
+    frequency, number of peaks per second.
+    sample_rate, total number of samples per second
     time, number of sets of the above.
     """
-    measured_period = np.pi * frequency * cycles
-    time_set = (measured_period / resolution) * time
-    my_wave = np.sin(np.arange(0, measured_period, time_set))
-    return my_wave
+    start_time = 0
+    theta = 0
+    time = np.arange(start_time, end_time, 1 / sample_rate)
+    total_wave = []
+    bits_encoded = 0
+    while bits_encoded < len(bits_to_encode):
+        amplitude = bits_to_encode[bits_encoded]
+        sinewave = single_bit_generator(frequency, time, int(amplitude), theta, mode)
+        for i in sinewave:
+            total_wave.append(i)
+        bits_encoded += 1
+    plt.plot(total_wave)
+    plt.show()
+    return total_wave
 
 
 def save_wave(wave, file_name):
@@ -63,6 +91,7 @@ def amplitude_shift_keying():
     amplitude shift keying takes in the wave amplitude on the Y axies.
     If the aplitude is doubled, that makes it a 1, and if the amplitude is halved, it is a 0
     """
+
     return
 
 
