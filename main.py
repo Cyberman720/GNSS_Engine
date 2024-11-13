@@ -1,12 +1,21 @@
 """
 This is a basic python script that takes in a sine wave, and converts it to bits
 I will be implementing the three major types of shift keying to do this.
+the object of this file is to be a function collection for a driver to use.
 """
+import numpy as np
+
+
 def wave_creator():
     """
     a utility function that takes our binary and puts it into a sine wave.
     """
-    return
+    cycles = 2  # how many sine cycles
+    resolution = 25  # how many datapoints to generate
+
+    length = np.pi * 2 * cycles
+    my_wave = np.sin(np.arange(0, length, length / resolution))
+    return my_wave
 
 def load_wave():
     """load an existing wave"""
