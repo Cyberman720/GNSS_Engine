@@ -8,13 +8,23 @@ import matplotlib.pyplot as plt
 import csv
 import os
 
+def show_wave(to_show):
+    """helper function to show the wave when i want to"""
+    plt.plot(to_show)
+    plt.show()
+
+
 
 def ascii_binary_translator(translate_me):
     """
     this is a helper function that takes in either binary or Text and outputs the inverse.
     """
+    bits = 8
     if translate_me.isnumeric():
-        translated = ''.join([chr(int(binary, 2)) for binary in translate_me.split(' ')])
+        working_string = str(translate_me)
+        grouped = [(working_string[i:i+bits]) for i in range(0, len(working_string), bits)]
+        binary_string = " ".join(str(x) for x in grouped)
+        translated = ''.join([chr(int(binary, 2)) for binary in binary_string.split(' ')])
     else:
         binary = ' '.join([f'{ord(char):08b}' for char in translate_me])
         translated = ("{}".format(binary)).replace(" ", "")
@@ -46,8 +56,6 @@ def wave_creator(end_time, sample_rate, frequency, bits_to_encode, mode):
         for i in sinewave:
             total_wave.append(i)
         bits_encoded += 1
-    plt.plot(total_wave)
-    plt.show()
     return total_wave
 
 
@@ -71,13 +79,14 @@ def load_wave(file):
     with open(file_location, 'r') as f:
         reader = csv.reader(f)
         data = list(reader)
-    array = []
+    empty = []
     for i in data:
-        array.append(i[0])
-    return array
+        empty.append(i[0])
+    arr = np.array(empty, dtype=np.float32)
+    return arr
 
 
-def phase_shift_keying():
+def decode_phase_shift_keying():
     """
     A phase shift key takes in our received wave, and checks it against our reference wave.
     This reference wave is a known value published by the operator of the transmitter.
@@ -86,16 +95,41 @@ def phase_shift_keying():
     return
 
 
-def amplitude_shift_keying():
+def decode_amplitude_shift_keying(to_decode, frequency, sample_rate):
     """
     amplitude shift keying takes in the wave amplitude on the Y axies.
     If the aplitude is doubled, that makes it a 1, and if the amplitude is halved, it is a 0
     """
+    """reference wave, if same == 0, if bigger == 1"""
+    start_time = 0
+    end_time = 1
+    time = np.arange(start_time, end_time, 1 / sample_rate)
+    theta = 0
+    amplitude = 1
+    reference_wave = amplitude * np.sin(2 * np.pi * frequency * time + theta)
+    buff_start = 0
+    buff_end = (sample_rate - 1)
+    decoded_bits = ""
+    while buff_end < len(to_decode):
+        buff_section = np.sort(to_decode[buff_start:buff_end])
+        ave = 1
+        buff_total = 0
+        while ave <= frequency:
+            inverse_ave = ave * -1
+            peak = float(buff_section[inverse_ave])
+            buff_total = buff_total + peak
+            ave += 1
+        buff_mean = buff_total/frequency
+        if buff_mean > 1.8*amplitude:
+            decoded_bits = "{}1".format(decoded_bits)
+        else:
+            decoded_bits = "{}0".format(decoded_bits)
+        buff_start = buff_end
+        buff_end += sample_rate
+    return decoded_bits
 
-    return
 
-
-def frequency_shift_keying():
+def decode_frequency_shift_keying():
     """
     Frequency shift keying relys on the wave doubling or halving.
     doubling the frequency of our reference wave would be a 0 in our case, with satandard frequency being 1
