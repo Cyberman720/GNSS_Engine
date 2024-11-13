@@ -12,12 +12,14 @@ import os
 def wave_creator(time, cycles, resolution, frequency):
     """
     a utility function that takes our binary and puts it into a sine wave.
+    cycles, number of complete waves per frequecncy.
+    frequency, number of peaks per resolution.
+    resolution, total number of samples
+    time, number of sets of the above.
     """
-    time = 1  # placeholder, time being one second
     measured_period = np.pi * frequency * cycles
-    my_wave = np.sin(np.arange(0, measured_period, measured_period / resolution))
-    plt.plot(my_wave)
-    plt.show()
+    time_set = (measured_period / resolution) * time
+    my_wave = np.sin(np.arange(0, measured_period, time_set))
     return my_wave
 
 
