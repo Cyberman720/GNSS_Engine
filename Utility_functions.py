@@ -31,26 +31,25 @@ def ascii_binary_translator(translate_me):
     return translated
 
 
-def single_bit_generator(frequency, time, amplitude, theta, mode):
+def single_bit_generator(bits_per_wave, amplitude, theta, mode, sample_rate):
+    length = np.pi * 2 * bits_per_wave
     if mode == "ASK":
         amplitude += 1  # double the amplitude
-        encoded_bit = amplitude * np.sin(2 * np.pi * frequency * time + theta)
+        encoded_bit = amplitude * np.sin(np.arange(0, length, length / sample_rate))
     elif mode == "PSK":
         encoding = int(theta) * 3  # 3 seems to move it 180 out of phase
-        encoded_bit = amplitude * np.sin(2 * np.pi * frequency * time + encoding)
+        encoded_bit = amplitude * np.sin(np.arange(0, length, length / sample_rate) + encoding)
     return encoded_bit
 
 
-def wave_creator(end_time, sample_rate, frequency, bits_to_encode, mode):
+def wave_creator(sample_rate, waves_per_bit, bits_to_encode, mode):
     """
     a utility function that takes our binary and puts it into a sine wave.
     frequency, number of peaks per second.
     sample_rate, total number of samples per second
     time, number of sets of the above.
     """
-    start_time = 0
     theta = 0
-    time = np.arange(start_time, end_time, 1 / sample_rate)
     total_wave = []
     bits_encoded = 0
     amplitude = 1
@@ -59,12 +58,11 @@ def wave_creator(end_time, sample_rate, frequency, bits_to_encode, mode):
             amplitude = bits_to_encode[bits_encoded]
         elif mode == "PSK":
             theta = bits_to_encode[bits_encoded]
-        sinewave = single_bit_generator(frequency, time, int(amplitude), theta, mode)
+        sinewave = single_bit_generator(waves_per_bit, int(amplitude), theta, mode, sample_rate)
         for i in sinewave:
             total_wave.append(i)
         bits_encoded += 1
     return total_wave
-
 
 def save_wave(wave, file_name):
     """ saves the wave as a basic CSV of measured points."""
@@ -108,12 +106,15 @@ def decode_phase_shift_keying(to_decode, frequency, sample_rate):
         buff_section = to_decode[buff_start:buff_end]
         ave = 1
         buff_trend = 0
-        while ave <= frequency:
-            peak = float(buff_section[ave])
-            buff_trend += peak
-            print(buff_trend)
+        peak = float(buff_section[ave])
+        while ave <= 5:
+            local = float(buff_section[ave])
+            buff_trend += local
             ave += 1
-        if buff_trend > 0:
+            print(buff_trend)
+        buff_mean = buff_trend / ave
+        print(buff_mean, peak)
+        if buff_mean > peak:
             decoded_bits = "{}0".format(decoded_bits)
         else:
             decoded_bits = "{}1".format(decoded_bits)
@@ -128,12 +129,7 @@ def decode_amplitude_shift_keying(to_decode, frequency, sample_rate):
     If the aplitude is doubled, that makes it a 1, and if the amplitude is halved, it is a 0
     """
     """reference wave, if same == 0, if bigger == 1"""
-    start_time = 0
-    end_time = 1
-    time = np.arange(start_time, end_time, 1 / sample_rate)
-    theta = 0
-    amplitude = 1
-    reference_wave = amplitude * np.sin(2 * np.pi * frequency * time + theta)
+    ref_amplitude = 1
     buff_start = 0
     buff_end = (sample_rate - 1)
     decoded_bits = ""
@@ -147,7 +143,7 @@ def decode_amplitude_shift_keying(to_decode, frequency, sample_rate):
             buff_total = buff_total + peak
             ave += 1
         buff_mean = buff_total/frequency
-        if buff_mean > 1.8*amplitude:
+        if buff_mean > 1.8 * ref_amplitude:
             decoded_bits = "{}1".format(decoded_bits)
         else:
             decoded_bits = "{}0".format(decoded_bits)
