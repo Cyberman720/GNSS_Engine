@@ -32,6 +32,7 @@ def ascii_binary_translator(translate_me):
 
 
 def single_bit_generator(bits_per_wave, amplitude, theta, mode, sample_rate):
+    """ this actually translates the bit to encode into a wave of the appropiate format"""
     length = np.pi * 2 * bits_per_wave
     if mode == "ASK":
         amplitude += 1  # double the amplitude
