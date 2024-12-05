@@ -60,8 +60,8 @@ def wave_creator(sample_rate, waves_per_bit, bits_to_encode, mode):
         elif mode == "PSK":
             theta = bits_to_encode[bits_encoded]
         sinewave = single_bit_generator(waves_per_bit, int(amplitude), theta, mode, sample_rate)
-        for i in sinewave:
-            total_wave.append(i)
+        for sample in sinewave:
+            total_wave.append(sample)
         bits_encoded += 1
     return total_wave
 
@@ -92,35 +92,67 @@ def load_wave(file):
     return arr
 
 
-def decode_phase_shift_keying(to_decode, frequency, sample_rate):
+def stringify(to_encode):
+    """simple helper that turns list of binary values into string to send other places"""
+    binary_string = ""
+    for i in to_encode:
+        binary_string = "{}{}".format(binary_string, i)
+    return binary_string
+
+
+def wave_step_down(list, carrier_freq, target_freq):
+    edited = []
+    factor = carrier_freq/target_freq
+    for i in list:
+        x = i / factor
+        edited.append(x)
+    return edited
+
+def sat_detector(reference_table, signal_in, chirp_length):
+    sat = 0
+    start = 0
+    while sat < 33:
+        if np.correlate(reference_table[start: chirp_length],signal_in[chirp_length]) < 0.9:
+            start += chirp_length
+            print("sat: {}".format(sat))
+            print("likelyhood: {}".format(np.correlate(reference_table[start: chirp_length],signal_in[chirp_length])))
+            sat += 1
+    print("sat found!")
+    print("sat: {}".format(sat))
+    print("likelyhood: {}".format(np.correlate(reference_table[start: chirp_length], signal_in[chirp_length])))
+    return sat
+
+
+
+
+
+def decode_phase_shift_keying(signal_in):
     """
     A phase shift key takes in our received wave, and checks it against our reference wave.
     This reference wave is a known value published by the operator of the transmitter.
     if we are in phase, that is a 1, out of phase by 180 degrees makes it a 0
     """
     buff_start = 0
-    buff_end = (sample_rate - 1)
+    buff_end = 5
     decoded_bits = ""
-
+    to_decode = signal_in[1:5]
     # I am going to check to see if the section trend is positive or negative e.g. phase of 0 or 3
     while buff_end < len(to_decode):
         buff_section = to_decode[buff_start:buff_end]
         ave = 1
         buff_trend = 0
         peak = float(buff_section[ave])
-        while ave <= 5:
+        while ave < 5:
             local = float(buff_section[ave])
             buff_trend += local
             ave += 1
-            print(buff_trend)
         buff_mean = buff_trend / ave
-        print(buff_mean, peak)
         if buff_mean > peak:
             decoded_bits = "{}0".format(decoded_bits)
         else:
             decoded_bits = "{}1".format(decoded_bits)
         buff_start = buff_end
-        buff_end += sample_rate
+        buff_end += 5
     return decoded_bits
 
 

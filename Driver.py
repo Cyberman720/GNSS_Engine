@@ -1,21 +1,29 @@
 import Gold_code_creator
 import Utility_functions
+import GPS_freq_picker
+
 
 
 def main():
-    to_encode = Gold_code_creator.Create_gold_code(24)
-    #to_encode =Utility_functions.ascii_binary_translator("hello world")
+    print("BOOTING")
     mode = "PSK"
-    measured_frequency = 1545420000
-    bits_per_second = 50
-    frequency_per_bit = measured_frequency / bits_per_second
-    time_observed = 30
-    sample_rate = 11500
-    total_samples = sample_rate * time_observed
-    #to_decode = Utility_functions.load_wave(working_file_wave)
-    to_decode = Utility_functions.wave_creator(total_samples, frequency_per_bit, to_encode, mode)
-    decoded = Utility_functions.decode_phase_shift_keying(to_decode, frequency_per_bit, total_samples)
-    print(decoded)
-    #ASCII = Utility_functions.ascii_binary_translator(decoded)
-    #print(ASCII)
+    target_sat = 25
+    carrier_freq = 154 * 10230000  # carrier frequency
+    f_prn = 10230000  # PRN frequency
+    sample_rate = 100000000  # sample rate, 100 GHz
+    message_in_binary = Utility_functions.ascii_binary_translator("Hello World")
+    prn_adapted_message = Gold_code_creator.message_PRN_encode(message_in_binary,
+                                                               target_sat, carrier_freq, f_prn, sample_rate, 1023)
+    print("Settings:\n Carrier_Frequency: {}\n "
+          "PRN_Frequency: {}\n Sample_rate: {}".format(carrier_freq, f_prn, sample_rate))
+    print("BOOTING")
+    reference_table = Gold_code_creator.sat_prn_table(carrier_freq, f_prn, sample_rate, 1023)
+    print("BOOTED")
+    print("ACQUIRING")
+    print(prn_adapted_message)
+    sat_detected = Utility_functions.sat_detector(reference_table, prn_adapted_message, 1023)
+    print("SIGNAL ACQUIRED")
+
+
+
 main()
