@@ -4,12 +4,15 @@ I will be implementing the three major types of shift keying to do this.
 the object of this file is to be a function collection for a driver to use.
 """
 import numpy as np
-import matplotlib.pyplot as plt
 import csv
 import os
+import math
+from scipy.signal import periodogram
+import matplotlib.pyplot as plt
+from matplotlib import rcParams
 
 def show_wave(to_show):
-    """helper function to show the wave when i want to"""
+    """helper function to show the wave when I want to"""
     plt.plot(to_show)
     plt.show()
 
@@ -30,40 +33,6 @@ def ascii_binary_translator(translate_me):
         translated = ("{}".format(binary)).replace(" ", "")
     return translated
 
-
-def single_bit_generator(bits_per_wave, amplitude, theta, mode, sample_rate):
-    """ this actually translates the bit to encode into a wave of the appropiate format"""
-    length = np.pi * 2 * bits_per_wave
-    if mode == "ASK":
-        amplitude += 1  # double the amplitude
-        encoded_bit = amplitude * np.sin(np.arange(0, length, length / sample_rate))
-    elif mode == "PSK":
-        encoding = int(theta) * 3  # 3 seems to move it 180 out of phase
-        encoded_bit = amplitude * np.sin(np.arange(0, length, length / sample_rate) + encoding)
-    return encoded_bit
-
-
-def wave_creator(sample_rate, waves_per_bit, bits_to_encode, mode):
-    """
-    a utility function that takes our binary and puts it into a sine wave.
-    frequency, number of peaks per second.
-    sample_rate, total number of samples per second
-    time, number of sets of the above.
-    """
-    theta = 0
-    total_wave = []
-    bits_encoded = 0
-    amplitude = 1
-    while bits_encoded < len(bits_to_encode):
-        if mode == "ASK":
-            amplitude = bits_to_encode[bits_encoded]
-        elif mode == "PSK":
-            theta = bits_to_encode[bits_encoded]
-        sinewave = single_bit_generator(waves_per_bit, int(amplitude), theta, mode, sample_rate)
-        for sample in sinewave:
-            total_wave.append(sample)
-        bits_encoded += 1
-    return total_wave
 
 def save_wave(wave, file_name):
     """ saves the wave as a basic CSV of measured points."""
@@ -100,95 +69,54 @@ def stringify(to_encode):
     return binary_string
 
 
-def wave_step_down(list, carrier_freq, target_freq):
-    edited = []
-    factor = carrier_freq/target_freq
-    for i in list:
-        x = i / factor
-        edited.append(x)
-    return edited
-
-def sat_detector(reference_table, signal_in, chirp_length):
-    sat = 0
-    start = 0
-    while sat < 33:
-        if np.correlate(reference_table[start: chirp_length],signal_in[chirp_length]) < 0.9:
-            start += chirp_length
-            print("sat: {}".format(sat))
-            print("likelyhood: {}".format(np.correlate(reference_table[start: chirp_length],signal_in[chirp_length])))
-            sat += 1
-    print("sat found!")
-    print("sat: {}".format(sat))
-    print("likelyhood: {}".format(np.correlate(reference_table[start: chirp_length], signal_in[chirp_length])))
-    return sat
-
-
-
-
-
-def decode_phase_shift_keying(signal_in):
+def correlationCoefficient(X, Y, n):
     """
-    A phase shift key takes in our received wave, and checks it against our reference wave.
-    This reference wave is a known value published by the operator of the transmitter.
-    if we are in phase, that is a 1, out of phase by 180 degrees makes it a 0
+        I couldn't find a better way of calculating a pearson R value for correlating the two lists of signals.
+        takes in list X and compares it against list Y, it works though the length of the list n to do a full comparison
     """
-    buff_start = 0
-    buff_end = 5
-    decoded_bits = ""
-    to_decode = signal_in[1:5]
-    # I am going to check to see if the section trend is positive or negative e.g. phase of 0 or 3
-    while buff_end < len(to_decode):
-        buff_section = to_decode[buff_start:buff_end]
-        ave = 1
-        buff_trend = 0
-        peak = float(buff_section[ave])
-        while ave < 5:
-            local = float(buff_section[ave])
-            buff_trend += local
-            ave += 1
-        buff_mean = buff_trend / ave
-        if buff_mean > peak:
-            decoded_bits = "{}0".format(decoded_bits)
-        else:
-            decoded_bits = "{}1".format(decoded_bits)
-        buff_start = buff_end
-        buff_end += 5
-    return decoded_bits
+    sum_X = 0
+    sum_Y = 0
+    sum_XY = 0
+    squareSum_X = 0
+    squareSum_Y = 0
 
+    i = 0
+    while i < n:
+        # sum of elements of array X.
+        sum_X = sum_X + X[i]
+        # sum of elements of array Y.
+        sum_Y = sum_Y + Y[i]
+        # sum of X[i] * Y[i].
+        sum_XY = sum_XY + X[i] * Y[i]
+        # sum of square of array elements.
+        squareSum_X = squareSum_X + X[i] * X[i]
+        squareSum_Y = squareSum_Y + Y[i] * Y[i]
+        i += 1
+    # use formula for calculating correlation
+    # coefficient.
+    corr = (float)(n * sum_XY - sum_X * sum_Y) / (float)(math.sqrt((n * squareSum_X -
+                                                                    sum_X * sum_X) * (n * squareSum_Y - sum_Y * sum_Y)))
+    return corr
 
-def decode_amplitude_shift_keying(to_decode, frequency, sample_rate):
-    """
-    amplitude shift keying takes in the wave amplitude on the Y axies.
-    If the aplitude is doubled, that makes it a 1, and if the amplitude is halved, it is a 0
-    """
-    """reference wave, if same == 0, if bigger == 1"""
-    ref_amplitude = 1
-    buff_start = 0
-    buff_end = (sample_rate - 1)
-    decoded_bits = ""
-    while buff_end < len(to_decode):
-        buff_section = np.sort(to_decode[buff_start:buff_end])
-        ave = 1
-        buff_total = 0
-        while ave <= frequency:
-            inverse_ave = ave * -1
-            peak = float(buff_section[inverse_ave])
-            buff_total = buff_total + peak
-            ave += 1
-        buff_mean = buff_total/frequency
-        if buff_mean > 1.8 * ref_amplitude:
-            decoded_bits = "{}1".format(decoded_bits)
-        else:
-            decoded_bits = "{}0".format(decoded_bits)
-        buff_start = buff_end
-        buff_end += sample_rate
-    return decoded_bits
+def plot_frequency_spectrum(signal_receved, reference_wave, sample_rate):
+    """This is a helper function that can be used to graph out our frequency stuff."""
+    # periodogram gives us a power spectrum at discrete frequency bins
+    f_s, P_s = periodogram(signal_receved, 1 / sample_rate, scaling='spectrum')
+    f_c, P_c = periodogram(reference_wave, 1 / sample_rate, scaling='spectrum')
+    rcParams.update({'font.size': 12})
+    ax = plt.figure(figsize=(15, 8))
+    plt.title("GPS Spreading")
+    plt.xlabel("Frequency [GHz]")
+    plt.ylabel(r"Relative Power [$\frac{V^2}{Hz}$]")
+    ax.axes[0].grid(color='grey', alpha=0.2, linestyle='dashed', linewidth=0.5)
 
+    # chart signal and carrier
+    plt.semilogy(f_s, P_s, '#e31d1d', alpha=0.9, label="Spread GPS signal")
+    plt.semilogy(f_c, P_c, '#709afa', label="Plain sine wave")
+    plt.legend(loc=1)
 
-def decode_frequency_shift_keying():
-    """
-    Frequency shift keying relys on the wave doubling or halving.
-    doubling the frequency of our reference wave would be a 0 in our case, with satandard frequency being 1
-    """
+    # show 30 MHz on either side of the center frequency
+    ax.axes[0].set_xlim([(1.57542e9 - 30e6), (1.57542e9 + 30e6)])
+    ax.axes[0].set_ylim([1e-32, 1])
+    plt.show()
 
-    return

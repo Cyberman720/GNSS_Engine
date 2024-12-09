@@ -1,7 +1,6 @@
-from scipy.signal import periodogram
-import matplotlib.pyplot as plt
-from matplotlib import rcParams
 import numpy as np
+import Utility_functions
+from multiprocessing.pool import ThreadPool
 
 def shift(register, feedback, output):
     """
@@ -75,16 +74,6 @@ def prn(sv):
     return ca
 
 
-
-def sat_modified(prn_binary):
-    counter = 0
-    while counter < len(prn_binary):
-        if prn_binary[counter] == 0:
-            prn_binary[counter] = -1
-        counter += 1
-    return prn_binary
-
-
 def complete_sim(carrier_freq, prn_freq, sample_rate, target_sat, chirp_length):
     # Generate ~1ms of data for a plain carrier, and a GPS signal
     signal_with_prn = []
@@ -97,29 +86,6 @@ def complete_sim(carrier_freq, prn_freq, sample_rate, target_sat, chirp_length):
         prn_bit = int((t * prn_freq)/1023) % 1023
         signal_with_prn.append(c * prn_binary[prn_bit])
     return signal_with_prn
-
-
-def plot_frequency_spectrum(signal_receved, reference_wave, sample_rate):
-    """This is a helper function that can be used to graph out our frequency stuff."""
-    # periodogram gives us a power spectrum at discrete frequency bins
-    f_s, P_s = periodogram(signal_receved, 1 / sample_rate, scaling='spectrum')
-    f_c, P_c = periodogram(reference_wave, 1 / sample_rate, scaling='spectrum')
-    rcParams.update({'font.size': 12})
-    ax = plt.figure(figsize=(15, 8))
-    plt.title("GPS Spreading")
-    plt.xlabel("Frequency [GHz]")
-    plt.ylabel(r"Relative Power [$\frac{V^2}{Hz}$]")
-    ax.axes[0].grid(color='grey', alpha=0.2, linestyle='dashed', linewidth=0.5)
-
-    # chart signal and carrier
-    plt.semilogy(f_s, P_s, '#e31d1d', alpha=0.9, label="Spread GPS signal")
-    plt.semilogy(f_c, P_c, '#709afa', label="Plain sine wave")
-    plt.legend(loc=1)
-
-    # show 30 MHz on either side of the center frequency
-    ax.axes[0].set_xlim([(1.57542e9 - 30e6), (1.57542e9 + 30e6)])
-    ax.axes[0].set_ylim([1e-32, 1])
-    plt.show()
 
 
 def sat_prn_table(carrier_freq, prn_freq, sample_rate, chirp_length):
@@ -154,3 +120,97 @@ def message_PRN_encode(message, target_sat, carrier_freq, prn_freq, sample_rate,
             chirps += 1
     print("ENCODING: Message translated into sat {} PRN chirps".format(target_sat))
     return message_to_prn
+
+
+
+
+def sat_detector(reference_table, signal_in, chirp_length):
+    """
+        This is a function that determines the chance that the signal received is from a given sat.
+        comparing the initial signal against all sats, we can determine what it came from.
+    """
+    sat = 0
+    sats = []
+    print("ACQUIRING")
+    while sat < len(reference_table):
+        receved_chirp = signal_in[:chirp_length]
+        sat_reference = reference_table[sat]
+        R_value = Utility_functions.correlationCoefficient(sat_reference, receved_chirp, chirp_length)
+        sat += 1
+        if abs(R_value) > 0.9:
+            print("SIGNAL ACQUIRED")
+            print("SAT: {} DETECTED".format((sat+1)))
+            print("LIKELIHOOD: {}".format(R_value))
+            sats.append(sat)
+    return sats, R_value
+
+
+def PRN_reader(sat_detected, signal, reference_table):
+    """ this function takes in our known sat, and signal receved, and gets binary back."""
+    print("READING SIGNAL")
+    window_end = 1023
+    window_start = 0
+    negs, posi = 0, 0
+    synced = 0
+    reference_wave = reference_table[sat_detected]
+    working_word = []
+    while window_end <= len(signal):
+        working_signal = signal[window_start:window_end]
+        R_value = Utility_functions.correlationCoefficient(reference_wave, working_signal, len(working_signal))
+        if R_value < -0.95:
+            negs += 1
+            if synced == 1:
+                window_start = window_end - 23
+                window_end += 1000
+        elif R_value > 0.95:
+            posi += 1
+            if synced == 1:
+                window_start = window_end - 23
+                window_end += 1000
+        if negs == 20 or posi == 20:
+            synced = 1
+            # now it will think it is synced after twenty chirps
+            if negs == 20:
+                working_word.append(0)
+            if posi == 20:
+                working_word.append(1)
+            negs, posi = 0, 0
+
+        window_end += 1
+        window_start += 1
+    binary_string = Utility_functions.stringify(working_word)
+    return binary_string
+
+
+def multi_sat_handler(sats_detected, signal, reference_table):
+    """
+    this handler pulls up a thread for each sat's PRN
+    pulls up the PRN reader fucntion and feeds in a different sat in for each thread.
+    it will them wave match for each sat.
+    """
+    count = 0
+    args = []
+    message_recived = []
+    while count < len(sats_detected):
+        SV_found = [sats_detected[count], signal, reference_table]
+        args.append(SV_found)
+        count += 1
+    with ThreadPool() as pool:
+        # call the same function with different data concurrently
+        for message_read in pool.starmap(PRN_reader, args):
+            # report the value to show progress
+            message_recived.append(message_read)
+        print("WORD READ")
+        pool.close()
+    return message_recived
+
+
+def reading_decoded_multisat(sats_detected, read_words):
+    counter = 0
+    words = []
+    while counter < len(sats_detected):
+        Ascii = Utility_functions.ascii_binary_translator(read_words[counter])
+        output = "SAT {} DECODED.\nMESSAGE FOLLOWS: {}".format(sats_detected[counter], Ascii)
+        words.append(output)
+        counter += 1
+    return words
