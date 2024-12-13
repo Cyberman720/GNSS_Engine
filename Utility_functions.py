@@ -120,3 +120,24 @@ def plot_frequency_spectrum(signal_receved, reference_wave, sample_rate):
     ax.axes[0].set_ylim([1e-32, 1])
     plt.show()
 
+
+def Merged_noise(signal_1, signal_2):
+    """ This is a function that overlays the signals together"""
+    counter = 0
+    master_noise = []
+    while counter < len(signal_1):
+        merged = signal_1[counter] + signal_2[counter]
+        master_noise.append(merged)
+        counter += 1
+    return master_noise
+
+"""
+def base_band_equivilent(signal, carrier_freq):
+    "" this is a function to downconvert to a baseband frequency.
+    forier transforms are symetric, but we only care about the positive as it would be redundant .
+    then we shift to be scentered on Zero.
+    ""
+    fc = 75000;
+    t = 1 : len(signal)
+    y = signal*sqrt(2).*exp(-i*2*pi*fc*t);
+"""

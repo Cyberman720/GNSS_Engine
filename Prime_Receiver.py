@@ -88,7 +88,7 @@ def complete_sim(carrier_freq, prn_freq, sample_rate, target_sat, chirp_length):
     return signal_with_prn
 
 
-def sat_prn_table(carrier_freq, prn_freq, sample_rate, chirp_length):
+def sat_prn_reference_table(carrier_freq, prn_freq, sample_rate, chirp_length):
     """ Creates a reference wave for each sat, then appends to a master table."""
     print("BOOTING")
     reference_table = []
@@ -101,7 +101,8 @@ def sat_prn_table(carrier_freq, prn_freq, sample_rate, chirp_length):
     print("BOOTED")
     return reference_table
 
-def message_PRN_encode(message, target_sat, carrier_freq, prn_freq, sample_rate, chirp_length):
+
+def message_prn_encode(message, target_sat, carrier_freq, prn_freq, sample_rate, chirp_length):
     """this is a function that brings the PRN and words together"""
     message_to_prn = []
     SV_inverse = []
@@ -122,32 +123,9 @@ def message_PRN_encode(message, target_sat, carrier_freq, prn_freq, sample_rate,
     return message_to_prn
 
 
-
-
-def sat_detector(reference_table, signal_in, chirp_length):
-    """
-        This is a function that determines the chance that the signal received is from a given sat.
-        comparing the initial signal against all sats, we can determine what it came from.
-    """
-    sat = 0
-    sats = []
-    print("ACQUIRING")
-    while sat < len(reference_table):
-        receved_chirp = signal_in[:chirp_length]
-        sat_reference = reference_table[sat]
-        R_value = Utility_functions.correlationCoefficient(sat_reference, receved_chirp, chirp_length)
-        sat += 1
-        if abs(R_value) > 0.9:
-            print("SIGNAL ACQUIRED")
-            print("SAT: {} DETECTED".format((sat+1)))
-            print("LIKELIHOOD: {}".format(R_value))
-            sats.append(sat)
-    return sats, R_value
-
-
 def PRN_reader(sat_detected, signal, reference_table):
     """ this function takes in our known sat, and signal receved, and gets binary back."""
-    print("READING SIGNAL")
+    print("\nThread for sat {}".format(sat_detected))
     window_end = 1023
     window_start = 0
     negs, posi = 0, 0
@@ -157,52 +135,28 @@ def PRN_reader(sat_detected, signal, reference_table):
     while window_end <= len(signal):
         working_signal = signal[window_start:window_end]
         R_value = Utility_functions.correlationCoefficient(reference_wave, working_signal, len(working_signal))
-        if R_value < -0.95:
+        if R_value < -0.85:
             negs += 1
             if synced == 1:
                 window_start = window_end - 23
                 window_end += 1000
-        elif R_value > 0.95:
+        elif R_value > 0.85:
             posi += 1
             if synced == 1:
                 window_start = window_end - 23
                 window_end += 1000
+        window_end += 1
+        window_start += 1
         if negs == 20 or posi == 20:
             synced = 1
             # now it will think it is synced after twenty chirps
             if negs == 20:
                 working_word.append(0)
-            if posi == 20:
+            elif posi == 20:
                 working_word.append(1)
             negs, posi = 0, 0
-
-        window_end += 1
-        window_start += 1
     binary_string = Utility_functions.stringify(working_word)
     return binary_string
-
-
-def multi_sat_handler(sats_detected, signal, reference_table):
-    """
-    this handler pulls up a thread for each sat's PRN
-    pulls up the PRN reader fucntion and feeds in a different sat in for each thread.
-    it will them wave match for each sat.
-    """
-    count = 0
-    args = []
-    message_recived = []
-    while count < len(sats_detected):
-        SV_found = [sats_detected[count], signal, reference_table]
-        args.append(SV_found)
-        count += 1
-    with ThreadPool() as pool:
-        # call the same function with different data concurrently
-        for message_read in pool.starmap(PRN_reader, args):
-            # report the value to show progress
-            message_recived.append(message_read)
-        print("WORD READ")
-        pool.close()
-    return message_recived
 
 
 def reading_decoded_multisat(sats_detected, read_words):
@@ -210,7 +164,63 @@ def reading_decoded_multisat(sats_detected, read_words):
     words = []
     while counter < len(sats_detected):
         Ascii = Utility_functions.ascii_binary_translator(read_words[counter])
-        output = "SAT {} DECODED.\nMESSAGE FOLLOWS: {}".format(sats_detected[counter], Ascii)
+        output = "SAT {} DECODED.\nMESSAGE FOLLOWS: {}".format((sats_detected[counter]+ 1), Ascii)
         words.append(output)
         counter += 1
     return words
+
+
+def multi_sat_splitter(message, carrier_freq, prn_freq, sample_rate, chirp_length):
+    """
+    this function takes a message, splits it over multiple sats
+    """
+    sat_active = 1
+    words_encoded = []
+    for word in message.split(" "):
+        print(word)
+        binary_word = Utility_functions.ascii_binary_translator(word)
+        encoded_word = message_prn_encode(binary_word, sat_active, carrier_freq, prn_freq, sample_rate, chirp_length)
+        words_encoded.append(encoded_word)
+        sat_active += 1
+    return words_encoded
+
+
+def wave_merger(waves):
+    """
+    this is a function that has the only objective of taking each array of things, and adding them all
+    Ultimately giveing a superimposed wave format.
+    """
+    superimposed = []
+    t = 0
+    for wave in waves:
+        while t < len(wave):
+            if len(superimposed) > t:
+                superimposed_value = superimposed[t] + wave[t]
+                superimposed.append(superimposed_value)
+            else:
+                superimposed.append(wave[t])
+            t += 1
+    return superimposed
+
+def demodulate(carrier_frequency, synced_signal_in, sample_rate):
+    x_axies = 0
+    base_band_signal = []
+    for reading in synced_signal_in:
+        t = x_axies * sample_rate
+        comparison_wave = np.sin(((np.pi * 2) * carrier_frequency) * t)
+        base_band = reading * comparison_wave
+        x_axies += 1
+        if base_band == reading:
+            base_band_signal.append(1)
+        else:
+            base_band_signal.append(-1)
+    print(base_band_signal)
+    return base_band_signal
+
+
+
+def prn_detector(prn_codes, demodulated_signal_portion):
+    for prn_code in prn_codes:
+        index = 0
+        while index < demodulated_signal_portion:
+            return

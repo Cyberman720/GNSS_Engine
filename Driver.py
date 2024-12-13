@@ -10,21 +10,23 @@ Written by Henry Rogers.
 
 def main():
     print("\nBOOTING...")
-    target_sat = 25
-    carrier_freq = 154 * 10230000  # carrier frequency
+    carrier_freq = 1545 * 1023000  # carrier frequency
     f_prn = 10230000  # PRN frequency
-    sample_rate = 10000000  # sample rate, 10 GHz
-    message_in_binary = Utility_functions.ascii_binary_translator("Hello world")
-    prn_adapted_message = Prime_Receiver.message_PRN_encode(message_in_binary,
-                                                               target_sat, carrier_freq, f_prn, sample_rate, 1023)
-    print("Settings:\n Carrier_Frequency: {}\n "
-          "PRN_Frequency: {}\n Sample_rate: {}".format(carrier_freq, f_prn, sample_rate))
-    reference_table = Prime_Receiver. sat_prn_table(carrier_freq, f_prn, sample_rate, 1023)
-    sats_detected, likelihood = Prime_Receiver.sat_detector(reference_table, prn_adapted_message, 1023)
-    read_words = Prime_Receiver.multi_sat_handler(sats_detected, prn_adapted_message, reference_table)
-    print("TRANSLATING MESSAGE")
-    for i in Prime_Receiver.reading_decoded_multisat(sats_detected, read_words):
-        print(i)
-    
+    sample_rate = 1000000  # sample rate, 1 GHz
+    chirp_length = 1023  # how long is one PRN chirp according to gps spec
+    print("Primary Settings:\n Carrier_Frequency: {}\n "
+          "PRN_Frequency: {}\n Sample_Rate: {}\n Chirp_Length: {}".format(carrier_freq,
+                                                                          f_prn, sample_rate, chirp_length))
+
+    multi_sat_message = Prime_Receiver.multi_sat_splitter("H", carrier_freq,
+                                                          f_prn, sample_rate, chirp_length)
+    multiplex_wave = Prime_Receiver.wave_merger(multi_sat_message)
+    reference_table = Prime_Receiver.sat_prn_reference_table(carrier_freq, f_prn, sample_rate, chirp_length)
+    base_band_signal = Prime_Receiver.demodulate(carrier_freq, multiplex_wave, sample_rate)
+    #resampled_base_band = Prime_Receiver.down_sample_synced(carrier_freq, sample_rate, f_prn)
+    stringy = Utility_functions.stringify(base_band_signal)
+    word = Utility_functions.ascii_binary_translator(stringy)
+    print(word)
+
 main()
 
