@@ -11,9 +11,153 @@ from scipy.signal import periodogram
 import matplotlib.pyplot as plt
 from matplotlib import rcParams
 
+
+"""******************************************************************************************************************"""
+def decimate(list_in, factor):
+    """ helper function to decimate a list of points down."""
+    counter = 1
+    decimated = []
+    while counter < len(list_in):
+        if (counter % (factor-1)) / (factor-1) == 0:
+            decimated.append(list_in[counter])
+        counter += 1
+    print(decimated)
+    return decimated
+
+
+def single_bit_generator(bits_per_wave, amplitude, theta, mode, sample_rate):
+    """ this actually translates the bit to encode into a wave of the appropiate format"""
+    length = np.pi * 2 * bits_per_wave
+    if mode == "ASK":
+        amplitude += 1  # double the amplitude
+        encoded_bit = amplitude * np.sin(np.arange(0, length, length / sample_rate))
+    elif mode == "PSK":
+        encoding = int(theta) * np.pi  # 1pi is 180 degrees out of phase for a sine wave
+        encoded_bit = amplitude * np.sin(np.arange(0, length, length / sample_rate) + encoding)
+    return encoded_bit
+
+
+def wave_creator(sample_rate, waves_per_bit, bits_to_encode, mode):
+    """
+    a utility function that takes our binary and puts it into a sine wave.
+    frequency, number of peaks per second.
+    sample_rate, total number of samples per second
+    time, number of sets of the above.
+    """
+    theta = 0
+    total_wave = []
+    bits_encoded = 0
+    amplitude = 1
+    while bits_encoded < len(bits_to_encode):
+        if mode == "ASK":
+            amplitude = bits_to_encode[bits_encoded]
+        elif mode == "PSK":
+            theta = bits_to_encode[bits_encoded]
+        sinewave = single_bit_generator(waves_per_bit, int(amplitude), theta, mode, sample_rate)
+        for sample in sinewave:
+            total_wave.append(sample)
+        bits_encoded += 1
+    return total_wave
+
+
+def decode_phase_shift_keying(signal_in):
+    """
+    A phase shift key takes in our received wave, and checks it against our reference wave.
+    This reference wave is a known value published by the operator of the transmitter.
+    if we are in phase, that is a 1, out of phase by 180 degrees makes it a 0
+    """
+    buff_start = 0
+    buff_end = 5
+    decoded_bits = ""
+    to_decode = signal_in[:5]
+    # I am going to check to see if the section trend is positive or negative e.g. phase of 0 or pi
+    while buff_end < len(to_decode):
+        buff_section = to_decode[buff_start:buff_end]
+        ave = 1
+        buff_trend = 0
+        peak = float(buff_section[ave])
+        while ave < 5:
+            local = float(buff_section[ave])
+            buff_trend += local
+            ave += 1
+        buff_mean = buff_trend / ave
+        if buff_mean > peak:
+            decoded_bits = "{}0".format(decoded_bits)
+        else:
+            decoded_bits = "{}1".format(decoded_bits)
+        buff_start = buff_end
+        buff_end += 5
+    return decoded_bits
+
+
+def decode_amplitude_shift_keying(to_decode, frequency, sample_rate):
+    """
+    amplitude shift keying takes in the wave amplitude on the Y axies.
+    If the aplitude is doubled, that makes it a 1, and if the amplitude is halved, it is a 0
+    """
+    """reference wave, if same == 0, if bigger == 1"""
+    ref_amplitude = 1
+    buff_start = 0
+    buff_end = (sample_rate - 1)
+    decoded_bits = ""
+    while buff_end < len(to_decode):
+        buff_section = np.sort(to_decode[buff_start:buff_end])
+        ave = 1
+        buff_total = 0
+        while ave <= frequency:
+            inverse_ave = ave * -1
+            peak = float(buff_section[inverse_ave])
+            buff_total = buff_total + peak
+            ave += 1
+        buff_mean = buff_total/frequency
+        if buff_mean > 1.8 * ref_amplitude:
+            decoded_bits = "{}1".format(decoded_bits)
+        else:
+            decoded_bits = "{}0".format(decoded_bits)
+        buff_start = buff_end
+        buff_end += sample_rate
+    return decoded_bits
+"""******************************************************************************************************************"""
+
+
+def demodulate_phase_shift_keying(to_decode):
+    """this function aims to determine if a given point is in phase or out of phase."""
+    amplitude = 1
+    length = 1
+    encoding = 1  # e.g. in standard phase
+    base_band = []
+    sample_rate = 100
+    index_start = 0
+    index_end = index_start + sample_rate
+    perfect_wave = (amplitude * np.sin(np.arange(0, length, length / sample_rate) + encoding))
+    while index_end <= len(to_decode):
+        buffer = to_decode[index_start:index_end]
+        dot_prod = 0
+        for i in buffer:
+            dot_prod = dot_prod + (perfect_wave[(index_start%sample_rate)] * i)
+            index_start += 1
+        if dot_prod > 0:
+            base_band.append(1)
+        else:
+            base_band.append(0)
+        index_end += sample_rate
+    message = stringify(base_band)
+    return message
+
+
+def polar_encoding(bit):
+    """ helper function to turn 1 and 0 into 1 and -1"""
+    if str(bit) == "1":
+        polar = 1
+    else:
+        polar = -1
+    return polar
+
+
 def show_wave(to_show):
     """helper function to show the wave when I want to"""
-    plt.plot(to_show)
+    numpy_array = np.array(to_show)
+    plt.plot(numpy_array)
     plt.show()
 
 
@@ -69,7 +213,7 @@ def stringify(to_encode):
     return binary_string
 
 
-def correlationCoefficient(X, Y, n):
+def correlation_coefficient(X, Y, n):
     """
         I couldn't find a better way of calculating a pearson R value for correlating the two lists of signals.
         takes in list X and compares it against list Y, it works though the length of the list n to do a full comparison
@@ -121,23 +265,3 @@ def plot_frequency_spectrum(signal_receved, reference_wave, sample_rate):
     plt.show()
 
 
-def Merged_noise(signal_1, signal_2):
-    """ This is a function that overlays the signals together"""
-    counter = 0
-    master_noise = []
-    while counter < len(signal_1):
-        merged = signal_1[counter] + signal_2[counter]
-        master_noise.append(merged)
-        counter += 1
-    return master_noise
-
-"""
-def base_band_equivilent(signal, carrier_freq):
-    "" this is a function to downconvert to a baseband frequency.
-    forier transforms are symetric, but we only care about the positive as it would be redundant .
-    then we shift to be scentered on Zero.
-    ""
-    fc = 75000;
-    t = 1 : len(signal)
-    y = signal*sqrt(2).*exp(-i*2*pi*fc*t);
-"""
