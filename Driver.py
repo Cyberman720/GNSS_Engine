@@ -1,35 +1,46 @@
+import F1_GNSS
+import numpy as np
+
 import Utility_functions
-import Prime_Receiver
 
 """
 This is the main driver that uses files, Prime Receiver and Utility functions.
-the purpose is to have the fiddly stuff seperate and open the door to making a UI or some other form of control.
+the purpose is to have the fiddly stuff separate and open the door to making a UI or some other form of control.
 Written by Henry Rogers.
 10/12/2024
 """
 
+
 def main():
     print("\nBOOTING...")
+    sample_rate = 100
+    encoding = 1
+    length = 1
+    amplitude = 1
     target_sat = 25
-    carrier_freq = 154 * 10230000  # carrier frequency
-    f_prn = 10230000  # PRN frequency
-    sample_rate = 10000000  # sample rate, 10 GHz
-    message_in_binary = Utility_functions.ascii_binary_translator("Hello world")
-    overlay_in_binary = Utility_functions.ascii_binary_translator("Check this shit out")
-    prn_adapted_message = Prime_Receiver.message_PRN_encode(message_in_binary,
-                                                               target_sat, carrier_freq, f_prn, sample_rate, 1023)
-    prn_adapted_overlay = Prime_Receiver.message_PRN_encode(overlay_in_binary, 4, carrier_freq, f_prn, sample_rate, 1023)
-    noisy_sgnal = Utility_functions.Merged_noise(prn_adapted_message, prn_adapted_overlay)
-    print("Settings:\n Carrier_Frequency: {}\n "
-          "PRN_Frequency: {}\n Sample_rate: {}".format(carrier_freq, f_prn, sample_rate))
-    reference_table = Prime_Receiver. sat_prn_table(carrier_freq, f_prn, sample_rate, 1023)
-    sats_detected, likelihood = Prime_Receiver.sat_detector(reference_table, noisy_sgnal, 1023)
-    print(sats_detected)
-    read_words = Prime_Receiver.multi_sat_handler(sats_detected, noisy_sgnal, reference_table)
-    print(read_words)
-    print("TRANSLATING MESSAGE")
-    for i in Prime_Receiver.reading_decoded_multisat(sats_detected, read_words):
-        print(i)
-    
+    print("SETTINGS SET")
+    print("GENERATEING: MESSAGE TO BINARY")
+    binary_message = Utility_functions.ascii_binary_translator("HELLO WORLD")
+    sat_2_message = Utility_functions.ascii_binary_translator("Funky Stuff")
+    print("GENERATEING: GOLD CODE")
+    print("GENERATEING: SINE WAVE")
+    reference_sine = (amplitude * np.sin(np.arange(0, length, length / sample_rate) + encoding))
+    list_of_encoded_waves = F1_GNSS.prn_encode_to_wave()
+    print("MESSAGE BEING ENCODED AS CHIRPS")
+    message_encoded_wave = F1_GNSS.chirp_prn_wave_as_bits(list_of_encoded_waves[target_sat], binary_message)
+    sat_2_encoded_wave = F1_GNSS.chirp_prn_wave_as_bits(list_of_encoded_waves[2],sat_2_message)
+    print("SUPERIMPOSING WAVES")
+    super_wave = F1_GNSS.superimpose_waves(message_encoded_wave, sat_2_encoded_wave)
+    print("DEMODULATING...")
+    demodulated_wave = F1_GNSS.demodulate_phase_shift_keying(super_wave, reference_sine, sample_rate)
+    print("INTERGRATING CHIRPS")
+    binary_read_message = F1_GNSS.de_chip_message(demodulated_wave)
+    print(binary_read_message)
+    print("PERFORMING CDMA shift")
+    messages = F1_GNSS
+    print("READING BINARY")
+    word = Utility_functions.ascii_binary_translator(binary_read_message)
+    print("MESSAGE FOLLOWS:\n{}".format(word))
+
 main()
 
